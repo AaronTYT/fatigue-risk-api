@@ -3,12 +3,15 @@ from pydantic import BaseModel
 import joblib
 import numpy as np
 
-# Load saved model (SVM Pipeline)
-model = joblib.load("svm_clean.pkl")
+# Load clean model components
+obj = joblib.load("svm_clean.pkl")
+scaler = obj["scaler"]
+svm = obj["svm"]
+classes = obj["classes"]
 
 app = FastAPI(
     title="Fatigue Prediction API",
-    description="Predict worker fatigue level (Low / Moderate / High / Severe)",
+    description="Predict worker fatigue level using clean SVM model",
     version="1.0"
 )
 
@@ -22,13 +25,13 @@ class WorkerData(BaseModel):
     movement_score: float
 
 @app.get("/")
-def root():
+def home():
     return {"status": "Fatigue API is running!"}
 
 @app.post("/predict")
 def predict(data: WorkerData):
 
-    # Convert input into model format
+    # Convert to numpy array
     X = np.array([[
         data.sleep_hours,
         data.shift_hours,
@@ -39,16 +42,16 @@ def predict(data: WorkerData):
         data.movement_score
     ]])
 
-    # Probability for each fatigue class
-    probs = model.predict_proba(X)[0]
+    # Scale numeric features
+    X_scaled = scaler.transform(X)
 
-    # Predicted class (string)
-    pred_class = model.classes_[np.argmax(probs)]
+    # Probability predictions
+    probs = svm.predict_proba(X_scaled)[0]
+
+    # Most likely class
+    pred_class = classes[np.argmax(probs)]
 
     return {
         "fatigue_label": pred_class,
-        "probabilities": {
-            cls: float(p)
-            for cls, p in zip(model.classes_, probs)
-        }
+        "probabilities": {cls: float(p) for cls, p in zip(classes, probs)}
     }
